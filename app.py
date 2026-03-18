@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import logging
+import warnings
 from flask import Flask, request, jsonify
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
@@ -11,6 +12,10 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from twilio.rest import Client
 from dotenv import load_dotenv
+
+# Suppress Google API cache warnings
+warnings.filterwarnings("ignore", message="file_cache is only supported with oauth2client<4.0.0")
+warnings.filterwarnings("ignore", module="googleapiclient.discovery_cache")
 
 # Load environment variables
 load_dotenv()
@@ -35,6 +40,10 @@ WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', 'your-secret-key')
 failed_attempts = {}
 MAX_FAILED_ATTEMPTS = 3
 FAILURE_RESET_TIME = 300  # 5 minutes in seconds
+
+# Processed messages tracking to prevent duplicate processing
+processed_messages = set()
+PROCESSED_MESSAGES_MAX_SIZE = 1000  # Limit memory usage
 
 def should_skip_processing(message_id):
     """Check if we should skip processing this message due to too many failures"""
@@ -78,20 +87,39 @@ def record_success(message_id):
         del failed_attempts[message_id]
         logger.info(f"Cleared failure record for message {message_id} after successful processing")
 
+def is_message_already_processed(message_id):
+    """Check if message was already processed"""
+    return message_id in processed_messages
+
+def mark_message_as_processed(message_id):
+    """Mark message as processed and manage memory usage"""
+    global processed_messages
+    
+    # If we're approaching memory limit, clear old entries
+    if len(processed_messages) >= PROCESSED_MESSAGES_MAX_SIZE:
+        # Keep only the most recent half
+        processed_messages = set(list(processed_messages)[PROCESSED_MESSAGES_MAX_SIZE//2:])
+        logger.info(f"Cleared old processed message records, keeping {len(processed_messages)} recent ones")
+    
+    processed_messages.add(message_id)
+    logger.info(f"Marked message {message_id} as processed")
+
 def get_credentials():
     """Get authenticated credentials for Google APIs"""
     creds = None
     
     # Check for token in environment variable first (for Render deployment)
     gmail_token_json = os.getenv('GMAIL_TOKEN_JSON')
-    if gmail_token_json:
+    if gmail_token_json and not os.path.exists('token.json'):
         try:
-            # Create temporary token file from environment variable
+            # Create temporary token file from environment variable only if it doesn't exist
             with open('token.json', 'w') as f:
                 f.write(gmail_token_json)
             logger.info("Created token.json from environment variable")
         except Exception as e:
             logger.error(f"Failed to create token.json from env var: {e}")
+    elif gmail_token_json and os.path.exists('token.json'):
+        logger.debug("token.json already exists, skipping creation from environment variable")
     
     # Load credentials from token file
     if os.path.exists('token.json'):
@@ -253,6 +281,14 @@ def gmail_webhook():
                 if messages:
                     message_id = messages[0]['id']
                     
+                    # Check if we already processed this message (prevent duplicate processing)
+                    if is_message_already_processed(message_id):
+                        logger.info(f"Message {message_id} already processed, skipping duplicate")
+                        return jsonify({
+                            'status': 'already_processed',
+                            'message': f'Message {message_id} was already processed'
+                        })
+                    
                     # Check if we should skip this message due to previous failures
                     if should_skip_processing(message_id):
                         return jsonify({
@@ -277,6 +313,9 @@ def gmail_webhook():
                             
                             # Record success (clears any previous failures)
                             record_success(message_id)
+                            
+                            # Mark message as processed to prevent duplicate processing
+                            mark_message_as_processed(message_id)
                             
                             return jsonify({
                                 'status': 'success',
@@ -367,6 +406,30 @@ def reset_circuit_breaker():
     return jsonify({
         'status': 'success',
         'message': f'Circuit breaker reset - cleared {cleared_count} failure records'
+    })
+
+@app.route('/processed-messages', methods=['GET'])
+def processed_messages_status():
+    """Get processed messages tracking status"""
+    return jsonify({
+        'total_processed_messages': len(processed_messages),
+        'max_capacity': PROCESSED_MESSAGES_MAX_SIZE,
+        'memory_usage_percent': round((len(processed_messages) / PROCESSED_MESSAGES_MAX_SIZE) * 100, 2),
+        'recent_messages': list(processed_messages)[-10:] if processed_messages else []
+    })
+
+@app.route('/processed-messages/reset', methods=['POST'])
+def reset_processed_messages():
+    """Reset processed messages tracking (clear all records)"""
+    global processed_messages
+    cleared_count = len(processed_messages)
+    processed_messages = set()
+    
+    logger.info(f"Processed messages tracking reset - cleared {cleared_count} records")
+    
+    return jsonify({
+        'status': 'success',
+        'message': f'Processed messages tracking reset - cleared {cleared_count} records'
     })
 
 if __name__ == '__main__':
