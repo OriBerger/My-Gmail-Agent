@@ -247,6 +247,43 @@ docker-compose ps
 - Check account balance
 - Validate phone number format
 
+## 🛡️ Circuit Breaker Protection
+
+The system includes a circuit breaker to prevent infinite loops when processing fails repeatedly (e.g., when Claude models are deprecated).
+
+### How it works:
+- **Max attempts**: 3 failed attempts per message
+- **Reset time**: 5 minutes after last failure
+- **Behavior**: Skip messages that exceed failure limit
+
+### Monitoring:
+```bash
+# Check circuit breaker status
+curl https://your-app.onrender.com/circuit-breaker
+
+# Reset circuit breaker (clear all failures)
+curl -X POST https://your-app.onrender.com/circuit-breaker/reset
+
+# Test circuit breaker functionality
+python test_circuit_breaker.py
+```
+
+### Example response:
+```json
+{
+  "max_attempts": 3,
+  "reset_time_seconds": 300,
+  "failed_messages": {
+    "msg_123": {
+      "failed_attempts": 2,
+      "last_attempt_ago": "45s",
+      "will_reset_in": "255s"
+    }
+  },
+  "total_failed_messages": 1
+}
+```
+
 ## 🔒 Security
 
 - All sensitive data in environment variables
