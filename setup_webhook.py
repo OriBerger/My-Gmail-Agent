@@ -47,11 +47,21 @@ def setup_gmail_webhook(webhook_url):
 def configure_pubsub_push(webhook_url, subscription_name):
     """Configure Pub/Sub subscription to push to webhook"""
     
-    print(f"\n🔧 To configure Pub/Sub push subscription:")
-    print(f"Run this command in Google Cloud Shell:")
+    print(f"\nTo configure Pub/Sub push subscription:")
+    print(f"Run these commands in Google Cloud Shell:")
     print(f"""
-gcloud pubsub subscriptions modify {subscription_name} \\
+# Delete existing subscription
+gcloud pubsub subscriptions delete {subscription_name} \\
+    --project={os.getenv('GOOGLE_PROJECT_ID')}
+
+# Create new push subscription  
+gcloud pubsub subscriptions create {subscription_name} \\
+    --topic=gmail-notifications \\
     --push-endpoint={webhook_url}/webhook/gmail \\
+    --project={os.getenv('GOOGLE_PROJECT_ID')}
+
+# Verify the subscription
+gcloud pubsub subscriptions describe {subscription_name} \\
     --project={os.getenv('GOOGLE_PROJECT_ID')}
     """)
 

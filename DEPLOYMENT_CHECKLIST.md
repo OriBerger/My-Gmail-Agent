@@ -56,7 +56,13 @@ TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
 MY_NUMBER=whatsapp:+YOUR_NUMBER
 GOOGLE_PROJECT_ID=project-adccce59-2a50-4dce-87f
 WEBHOOK_SECRET=your-random-secret-key
+GMAIL_TOKEN_JSON={"token":"ya29.a0ATkoC...","refresh_token":"1//03Xqm..."}
 ```
+
+**IMPORTANT: Getting the GMAIL_TOKEN_JSON value:**
+1. Run: `python get_token_for_render.py`
+2. Copy the entire JSON string output
+3. Paste it as the value for GMAIL_TOKEN_JSON in Render
 
 ### 4. File Upload (Important!)
 Since Render doesn't support file uploads via dashboard, you need to:

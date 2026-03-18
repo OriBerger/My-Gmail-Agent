@@ -35,7 +35,18 @@ def get_credentials():
     """Get authenticated credentials for Google APIs"""
     creds = None
     
-    # For production, use service account or other auth method
+    # Check for token in environment variable first (for Render deployment)
+    gmail_token_json = os.getenv('GMAIL_TOKEN_JSON')
+    if gmail_token_json:
+        try:
+            # Create temporary token file from environment variable
+            with open('token.json', 'w') as f:
+                f.write(gmail_token_json)
+            logger.info("Created token.json from environment variable")
+        except Exception as e:
+            logger.error(f"Failed to create token.json from env var: {e}")
+    
+    # Load credentials from token file
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     

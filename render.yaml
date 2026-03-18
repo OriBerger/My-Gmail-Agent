@@ -23,6 +23,8 @@ services:
         sync: false
       - key: WEBHOOK_SECRET
         generateValue: true
+      - key: GMAIL_TOKEN_JSON
+        sync: false
     disk:
       name: gmail-agent-disk
       mountPath: /app/data
