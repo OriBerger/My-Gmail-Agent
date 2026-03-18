@@ -31,6 +31,53 @@ SCOPES = [
 PROJECT_ID = os.getenv('GOOGLE_PROJECT_ID')
 WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', 'your-secret-key')
 
+# Circuit breaker for failed email processing
+failed_attempts = {}
+MAX_FAILED_ATTEMPTS = 3
+FAILURE_RESET_TIME = 300  # 5 minutes in seconds
+
+def should_skip_processing(message_id):
+    """Check if we should skip processing this message due to too many failures"""
+    import time
+    
+    if message_id not in failed_attempts:
+        return False
+    
+    failure_info = failed_attempts[message_id]
+    current_time = time.time()
+    
+    # Reset counter if enough time has passed
+    if current_time - failure_info['last_attempt'] > FAILURE_RESET_TIME:
+        del failed_attempts[message_id]
+        return False
+    
+    # Skip if we've exceeded max attempts
+    if failure_info['count'] >= MAX_FAILED_ATTEMPTS:
+        logger.warning(f"Skipping message {message_id} - exceeded {MAX_FAILED_ATTEMPTS} failed attempts")
+        return True
+    
+    return False
+
+def record_failure(message_id):
+    """Record a failed processing attempt"""
+    import time
+    
+    current_time = time.time()
+    
+    if message_id not in failed_attempts:
+        failed_attempts[message_id] = {'count': 0, 'last_attempt': current_time}
+    
+    failed_attempts[message_id]['count'] += 1
+    failed_attempts[message_id]['last_attempt'] = current_time
+    
+    logger.warning(f"Recording failure for message {message_id} - attempt {failed_attempts[message_id]['count']}/{MAX_FAILED_ATTEMPTS}")
+
+def record_success(message_id):
+    """Record a successful processing attempt"""
+    if message_id in failed_attempts:
+        del failed_attempts[message_id]
+        logger.info(f"Cleared failure record for message {message_id} after successful processing")
+
 def get_credentials():
     """Get authenticated credentials for Google APIs"""
     creds = None
@@ -204,27 +251,48 @@ def gmail_webhook():
                 messages = results.get('messages', [])
                 
                 if messages:
-                    # Process the email
-                    content = fetch_email_content(service, messages[0]['id'])
-                    summary = process_and_send(content)
+                    message_id = messages[0]['id']
                     
-                    if summary:
-                        # Mark as read
-                        service.users().messages().batchModify(
-                            userId='me',
-                            body={
-                                'ids': [messages[0]['id']], 
-                                'removeLabelIds': ['UNREAD']
-                            }
-                        ).execute()
-                        
+                    # Check if we should skip this message due to previous failures
+                    if should_skip_processing(message_id):
                         return jsonify({
-                            'status': 'success',
-                            'message': 'Email processed successfully',
-                            'summary': summary
+                            'status': 'skipped',
+                            'message': f'Message {message_id} skipped due to repeated failures'
                         })
-                    else:
-                        return jsonify({'error': 'Failed to process email'}), 500
+                    
+                    try:
+                        # Process the email
+                        content = fetch_email_content(service, message_id)
+                        summary = process_and_send(content)
+                        
+                        if summary:
+                            # Mark as read
+                            service.users().messages().batchModify(
+                                userId='me',
+                                body={
+                                    'ids': [message_id], 
+                                    'removeLabelIds': ['UNREAD']
+                                }
+                            ).execute()
+                            
+                            # Record success (clears any previous failures)
+                            record_success(message_id)
+                            
+                            return jsonify({
+                                'status': 'success',
+                                'message': 'Email processed successfully',
+                                'summary': summary
+                            })
+                        else:
+                            # Record failure
+                            record_failure(message_id)
+                            return jsonify({'error': 'Failed to process email'}), 500
+                    
+                    except Exception as e:
+                        # Record failure for any exception during processing
+                        record_failure(message_id)
+                        logger.error(f"Error processing message {message_id}: {e}")
+                        return jsonify({'error': f'Processing failed: {str(e)}'}), 500
                 else:
                     return jsonify({
                         'status': 'no_messages',
@@ -264,6 +332,42 @@ def test_endpoint():
     except Exception as e:
         logger.error(f"Test endpoint error: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/circuit-breaker', methods=['GET'])
+def circuit_breaker_status():
+    """Get circuit breaker status"""
+    import time
+    current_time = time.time()
+    
+    status = {}
+    for message_id, failure_info in failed_attempts.items():
+        time_since_last = current_time - failure_info['last_attempt']
+        status[message_id] = {
+            'failed_attempts': failure_info['count'],
+            'last_attempt_ago': f"{int(time_since_last)}s",
+            'will_reset_in': f"{int(FAILURE_RESET_TIME - time_since_last)}s" if time_since_last < FAILURE_RESET_TIME else "ready_to_reset"
+        }
+    
+    return jsonify({
+        'max_attempts': MAX_FAILED_ATTEMPTS,
+        'reset_time_seconds': FAILURE_RESET_TIME,
+        'failed_messages': status,
+        'total_failed_messages': len(failed_attempts)
+    })
+
+@app.route('/circuit-breaker/reset', methods=['POST'])
+def reset_circuit_breaker():
+    """Reset circuit breaker (clear all failure records)"""
+    global failed_attempts
+    cleared_count = len(failed_attempts)
+    failed_attempts = {}
+    
+    logger.info(f"Circuit breaker reset - cleared {cleared_count} failure records")
+    
+    return jsonify({
+        'status': 'success',
+        'message': f'Circuit breaker reset - cleared {cleared_count} failure records'
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
