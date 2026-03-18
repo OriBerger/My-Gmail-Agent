@@ -129,7 +129,7 @@ def process_and_send(content):
     """Process email content and send summary via WhatsApp"""
     try:
         # Initialize clients
-        llm = ChatAnthropic(model="claude-3-5-sonnet-20240620", temperature=0)
+        llm = ChatAnthropic(model="claude-3-5-sonnet-20241022", temperature=0)
         twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
         
         # Create summary

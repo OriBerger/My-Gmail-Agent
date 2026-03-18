@@ -22,7 +22,7 @@ SCOPES = [
 ]
 
 # אתחול AI וטוויליו
-# llm = ChatAnthropic(model="claude-3-5-sonnet-20240620", temperature=0)
+# llm = ChatAnthropic(model="claude-3-5-sonnet-20241022", temperature=0)
 # twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
 
 def get_credentials():
@@ -71,7 +71,7 @@ def fetch_email_content(service, message_id):
 def process_and_send(content):
     """מתמצת ושולח לוואטסאפ"""
     # Initialize clients locally to avoid hanging on startup
-    llm = ChatAnthropic(model="claude-3-5-sonnet-20240620", temperature=0)
+    llm = ChatAnthropic(model="claude-3-5-sonnet-20241022", temperature=0)
     twilio_client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
     
     prompt = ChatPromptTemplate.from_template(
