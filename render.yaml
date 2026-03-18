@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: gmail-agent
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 app:app
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+      - key: MY_NUMBER
+        sync: false
+      - key: GOOGLE_PROJECT_ID
+        sync: false
+      - key: WEBHOOK_SECRET
+        generateValue: true
+    disk:
+      name: gmail-agent-disk
+      mountPath: /app/data
+      sizeGB: 1
