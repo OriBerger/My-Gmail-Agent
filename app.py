@@ -217,7 +217,7 @@ def process_and_send(content):
         # Send WhatsApp message
         twilio_client.messages.create(
             from_=os.getenv('TWILIO_WHATSAPP_NUMBER'),
-            body=f"*You have a new email, this is its summary:*\n{summary}",
+            body=f"*New email summary:*\n{summary}",
             to=os.getenv('MY_NUMBER')
         )
         
