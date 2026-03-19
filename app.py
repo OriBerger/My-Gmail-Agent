@@ -194,13 +194,15 @@ def fetch_email_content(service, message_id):
                         logger.warning(f"Failed to decode email body: {decode_error}")
                         body = "Could not decode email content"
         
-        return f"From: {sender}\nSubject: {subject}\n\n{body}"
+        content = f"From: {sender}\nSubject: {subject}\n\n{body}"
+        return content, sender
     
     except Exception as e:
         logger.error(f"Error fetching email content: {e}")
-        return f"Error fetching email: {str(e)}"
+        error_content = f"Error fetching email: {str(e)}"
+        return error_content, "Unknown Sender"
 
-def process_and_send(content):
+def process_and_send(content, sender):
     """Process email content and send summary via WhatsApp"""
     try:
         # Initialize clients
@@ -215,10 +217,10 @@ def process_and_send(content):
         chain = prompt | llm
         summary = chain.invoke({"content": content}).content
         
-        # Send WhatsApp message
+        # Send WhatsApp message with sender information
         twilio_client.messages.create(
             from_=os.getenv('TWILIO_WHATSAPP_NUMBER'),
-            body=f"*Gmail Summary:*\n{summary}",
+            body=f"*Gmail Summary from {sender}:*\n{summary}",
             to=os.getenv('MY_NUMBER')
         )
         
@@ -317,8 +319,8 @@ def gmail_webhook():
                     
                     try:
                         # Process the email
-                        content = fetch_email_content(service, message_id)
-                        summary = process_and_send(content)
+                        content, sender = fetch_email_content(service, message_id)
+                        summary = process_and_send(content, sender)
                         
                         if summary:
                             # Mark as read
@@ -373,8 +375,8 @@ def test_endpoint():
         messages = results.get('messages', [])
         
         if messages:
-            content = fetch_email_content(service, messages[0]['id'])
-            summary = process_and_send(content)
+            content, sender = fetch_email_content(service, messages[0]['id'])
+            summary = process_and_send(content, sender)
             
             return jsonify({
                 'status': 'success',
