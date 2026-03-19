@@ -251,6 +251,22 @@ def gmail_webhook():
         data = request.get_json()
         logger.info(f"Received webhook: {data}")
         
+        # Get the Pub/Sub message ID for deduplication
+        pubsub_message_id = None
+        if 'message' in data and 'messageId' in data['message']:
+            pubsub_message_id = data['message']['messageId']
+            
+            # Check if we already processed this Pub/Sub message (prevent duplicate webhook processing)
+            if is_message_already_processed(f"pubsub_{pubsub_message_id}"):
+                logger.info(f"Pub/Sub message {pubsub_message_id} already processed, skipping duplicate webhook")
+                return jsonify({
+                    'status': 'already_processed',
+                    'message': f'Pub/Sub message {pubsub_message_id} was already processed'
+                }), 200
+            
+            # Mark this Pub/Sub message as processed immediately to prevent race conditions
+            mark_message_as_processed(f"pubsub_{pubsub_message_id}")
+        
         # Extract message from Pub/Sub format
         if 'message' in data:
             message_data = data['message']
@@ -294,7 +310,7 @@ def gmail_webhook():
                         return jsonify({
                             'status': 'skipped',
                             'message': f'Message {message_id} skipped due to repeated failures'
-                        })
+                        }), 200
                     
                     try:
                         # Process the email
@@ -321,7 +337,7 @@ def gmail_webhook():
                                 'status': 'success',
                                 'message': 'Email processed successfully',
                                 'summary': summary
-                            })
+                            }), 200
                         else:
                             # Record failure
                             record_failure(message_id)
@@ -336,9 +352,9 @@ def gmail_webhook():
                     return jsonify({
                         'status': 'no_messages',
                         'message': 'No unread messages found'
-                    })
+                    }), 200
         
-        return jsonify({'status': 'success', 'message': 'Webhook received'})
+        return jsonify({'status': 'success', 'message': 'Webhook received'}), 200
         
     except Exception as e:
         logger.error(f"Webhook error: {e}")
