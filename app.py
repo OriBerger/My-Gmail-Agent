@@ -278,7 +278,18 @@ def gmail_webhook():
                 email_address = notification.get('emailAddress')
                 history_id = notification.get('historyId')
                 
-                logger.info(f"New email notification from: {email_address}")
+                logger.info(f"New email notification from: {email_address}, historyId: {history_id}")
+                
+                # Check if we already processed this history ID (prevent duplicate processing from multiple webhooks)
+                if is_message_already_processed(f"history_{history_id}"):
+                    logger.info(f"History ID {history_id} already processed, skipping duplicate webhook")
+                    return jsonify({
+                        'status': 'already_processed',
+                        'message': f'History ID {history_id} was already processed'
+                    }), 200
+                
+                # Mark this history ID as processed immediately to prevent race conditions
+                mark_message_as_processed(f"history_{history_id}")
                 
                 # Get Gmail service
                 service = get_gmail_service()
@@ -297,13 +308,13 @@ def gmail_webhook():
                 if messages:
                     message_id = messages[0]['id']
                     
-                    # Check if we already processed this message (prevent duplicate processing)
+                    # Additional check: if we already processed this Gmail message (backup safety)
                     if is_message_already_processed(message_id):
-                        logger.info(f"Message {message_id} already processed, skipping duplicate")
+                        logger.info(f"Gmail message {message_id} already processed, skipping duplicate")
                         return jsonify({
                             'status': 'already_processed',
-                            'message': f'Message {message_id} was already processed'
-                        })
+                            'message': f'Gmail message {message_id} was already processed'
+                        }), 200
                     
                     # Check if we should skip this message due to previous failures
                     if should_skip_processing(message_id):
