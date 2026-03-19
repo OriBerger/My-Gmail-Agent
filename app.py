@@ -209,7 +209,7 @@ def process_and_send(content):
         
         # Create summary
         prompt = ChatPromptTemplate.from_template(
-            "You are a personal Gmail assistant. Summarize the following email in one or two short, concise sentences in Hebrew.\n\n{content}"
+            "You are a personal Gmail assistant. Summarize the following email in one or two short, concise sentences in Hebrew, no need for titles or anything like that, just provide the sentences.\n\n{content}"
         )
         chain = prompt | llm
         summary = chain.invoke({"content": content}).content
