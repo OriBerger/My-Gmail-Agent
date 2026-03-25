@@ -180,7 +180,6 @@ curl -X POST https://your-app.onrender.com/test
 
 ```
 ├── app.py                 # Flask web service
-├── agent.py              # Original polling agent (deprecated)
 ├── setup_webhook.py      # Webhook configuration script
 ├── test_auth.py          # Authentication test script
 ├── Dockerfile            # Container definition
